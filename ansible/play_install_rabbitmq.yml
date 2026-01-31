@@ -7,6 +7,7 @@
     master_node: "{{ groups['all'][0] }}"
     rabbit_user: "admin"
     rabbit_number: "12345"
+    host_user: "osho"
 
   tasks:
     - name: Тест ping
@@ -44,8 +45,8 @@
     - name: Создание файла producer.py
       ansible.builtin.copy:
         dest: /home/producer.py
-        owner: osho
-        group: osho
+        owner: {{ host_user }}
+        group: {{ host_user }}
         mode: '0644'
         content: |
           import pika
@@ -62,8 +63,8 @@
     - name: Создание файла consumer.py
       ansible.builtin.copy:
         dest: /home/consumer.py
-        owner: osho
-        group: osho
+        owner: {{ host_user }}
+        group: {{ host_user }}
         mode: '0644'
         content: |
           import pika
