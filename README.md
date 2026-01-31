@@ -52,15 +52,15 @@ pip install pika
 python3 producer.py
 ```
 
-![](pic/002.PNG)
+![](pic/PIC002.PNG)
 
 Запуск скрипта **consumer.py**:
 ```
 python3 consumer.py
 ```
-![](pic/003.PNG)
+![](pic/PIC003.PNG)
 
-![](pic/004.PNG)
+![](pic/PIC004.PNG)
 
 Отправлено 3 запроса и **consumer** принял их.
 
@@ -109,10 +109,8 @@ sudo rabbitmqctl cluster_status
 
 При всех работающих нодах:
 
-[Статус ноды bastion](file-status/bastion.txt)
-
-[Статус ноды worker1](file-status/worker1.txt)
-
+[Статус ноды bastion](file-status/bastion.txt)\
+[Статус ноды worker1](file-status/worker1.txt)\
 [Статус ноды worker2](file-status/worker2.txt)
 
 Проверка на каждой ноде:
@@ -121,13 +119,13 @@ sudo rabbitmqctl cluster_status
 sudo rabbitmqadmin get queue='hello'
 ```
 
-![](pic/005.PNG)
+![](pic/PIC005.PNG)
 
 После отключения одной ноды:
 
-![](pic/006.PNG)
+![](pic/PIC006.PNG)
 
-![](pic/007.PNG)
+![](pic/PIC007.PNG)
 
 [Файл статуса с worker2](file-status/worker2_without1node.txt)
 
@@ -145,10 +143,10 @@ sudo rabbitmqadmin get queue='hello'
 Логика **ansible**:
 - Выполнение скрипта установки.
 - Создание пользователя.
-- Приведение в порядок файла cookie.
-- Редактирование /etc/hosts
+- Приведение в порядок файла **cookie**.
+- Редактирование */etc/hosts*
 - Объединение в кластер
 - Включение веб-менеджера
-- Применение политики ha-all
+- Применение политики **ha-all**
 
 [Файл playbook](ansible/play_install_rabbitmq.yml)
