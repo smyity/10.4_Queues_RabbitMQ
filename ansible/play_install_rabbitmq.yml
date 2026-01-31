@@ -1,0 +1,202 @@
+- name: Установка RabbitMQ Ubuntu 22.04
+  hosts: all
+  become: true
+  vars:
+    tmp_path: "./cookie"
+    # Определение первой ноды из инвентаря как главной
+    master_node: "{{ groups['all'][0] }}"
+    rabbit_user: "admin"
+    rabbit_number: "12345"
+
+  tasks:
+    - name: Тест ping
+      ping:
+
+    - name: Выполнение скрипта установки RabbitMQ
+      ansible.builtin.shell: |
+        apt-get install curl gnupg apt-transport-https -y
+
+        curl -1sLf "https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA" | gpg --dearmor | tee /usr/share/keyrings/com.rabbitmq.team.gpg > /dev/null
+
+        tee /etc/apt/sources.list.d/rabbitmq.list <<EOF
+        deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-erlang/ubuntu/jammy jammy main
+        deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-erlang/ubuntu/jammy jammy main
+
+        deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-server/ubuntu/jammy jammy main
+        deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-server/ubuntu/jammy jammy main
+        EOF
+
+        apt-get update -y
+
+        apt-get install -y erlang-base \
+        erlang-asn1 erlang-crypto erlang-eldap erlang-ftp erlang-inets \
+        erlang-mnesia erlang-os-mon erlang-parsetools erlang-public-key \
+        erlang-runtime-tools erlang-snmp erlang-ssl \
+        erlang-syntax-tools erlang-tftp erlang-tools erlang-xmerl
+
+        apt-get install rabbitmq-server -y --fix-missing
+        # hw #
+        apt-get install python3-pip -y
+        pip install pika
+      args:
+        executable: /bin/bash
+
+    - name: Создание файла producer.py
+      ansible.builtin.copy:
+        dest: /home/producer.py
+        owner: osho
+        group: osho
+        mode: '0644'
+        content: |
+          import pika
+
+          credentials = pika.PlainCredentials('admin', '12345')
+          parameters = pika.ConnectionParameters('{{ ansible_host }}', 5672, '/', credentials)
+
+          connection = pika.BlockingConnection(parameters)
+          channel = connection.channel()
+          channel.queue_declare(queue='hello')
+          channel.basic_publish(exchange='', routing_key='hello', body='Hello Netology!')
+          connection.close()
+
+    - name: Создание файла consumer.py
+      ansible.builtin.copy:
+        dest: /home/consumer.py
+        owner: osho
+        group: osho
+        mode: '0644'
+        content: |
+          import pika
+
+          credentials = pika.PlainCredentials('admin', '12345')
+          parameters = pika.ConnectionParameters(host='{{ ansible_host }}', credentials=credentials)
+
+          connection = pika.BlockingConnection(parameters)
+          channel = connection.channel()
+
+          channel.queue_declare(queue='hello')
+
+          def callback(ch, method, properties, body):
+              print(f" [x] Received {body.decode()}")
+
+          channel.basic_consume(queue='hello', on_message_callback=callback, auto_ack=True)
+
+          print(' [*] Waiting for messages. To exit press CTRL+C')
+          try:
+              channel.start_consuming()
+          except KeyboardInterrupt:
+              print('\nInterrupted by user, stopping...')
+              connection.close()
+
+    - name: Создание пользователя
+      command: rabbitmqctl add_user "{{ rabbit_user }}" "{{ rabbit_number }}"
+      register: user_x
+      when: inventory_hostname == master_node
+      failed_when: 
+        - user_x.rc != 0 # Return Code (код возврата)
+        # Хоть вывод ошибки будет "already exists", нужно писать "already_exists" - это "наследие" языка Erlang, на котором написан RabbitMQ
+        - "'already' not in user_x.stderr"
+      changed_when:
+        - user_x.rc == 0
+
+    - name: Назначение роли
+      command: rabbitmqctl set_user_tags "{{ rabbit_user }}" administrator
+      when: inventory_hostname == master_node and user_x.changed
+
+    - name: Установка прав на Virtual host
+      command: rabbitmqctl set_permissions -p "/" "{{ rabbit_user }}" ".*" ".*" ".*"
+      when: inventory_hostname == master_node and user_x.changed
+
+    - name: Создание временного файла cookie
+      ansible.builtin.fetch:
+        src: /var/lib/rabbitmq/.erlang.cookie
+        dest: "{{ tmp_path }}"
+        flat: yes # Сохранение именно по тому пути который указан без структуры папок, повторяющую путь до файла
+      when: inventory_hostname == master_node
+
+    - name: Копирование файла cookie на все ноды
+      ansible.builtin.copy:
+        src: "{{ tmp_path }}"
+        dest: /var/lib/rabbitmq/.erlang.cookie
+        owner: rabbitmq
+        group: rabbitmq
+        mode: '0400'
+      register: cookie_status
+
+    - name: Копирование файла cookie в директорию root/
+      ansible.builtin.copy:
+        src: "{{ tmp_path }}"
+        dest: /root/.erlang.cookie
+        owner: rabbitmq
+        group: rabbitmq
+        mode: '0400'
+      register: cookie_root_status
+
+    - name: Удаление временного файла cookie на ansible машине
+      delegate_to: localhost # Удаление именно на машине, где запускается ansible
+      run_once: true # выполнить задачу всего один раз, а не столько, сколько хостов указано в inventory.ini
+      ansible.builtin.file:
+        path: "{{ tmp_path }}"
+        state: absent
+
+    - name: Перезапуск сервиса RabbitMQ
+      systemd:
+        name: rabbitmq-server
+        state: restarted
+      when: cookie_status.changed or cookie_root_status.changed
+
+    - name: Ожидание порта
+      wait_for:
+        port: 5672
+        host: "{{ ansible_host }}"
+        delay: 5
+        timeout: 60
+      when: cookie_status.changed
+
+    - name: Узнать значения групп
+      debug:
+        msg: "{{ hostvars[item]['ansible_host'] }} {{ item }}"
+      loop: "{{ groups['all'] }}"
+
+    - name: Добавление нод в etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hostvars[item]['ansible_host'] }} {{ item }}"
+        regexp: ".* {{ item }}$"
+        state: present
+      loop: "{{ groups['all'] }}"
+
+    - name: Добавление в кластер
+      shell: |
+        rabbitmqctl stop_app
+        rabbitmqctl join_cluster rabbit@{{ master_node }}
+        rabbitmqctl start_app
+      when: inventory_hostname != master_node
+      register: cluster_join
+      failed_when: 
+        - cluster_join.rc != 0 # Return Code (код возврата)
+        - "'already_member' not in cluster_join.stderr" # Специфическая строка которую RabbitMQ выдает в консоль (stderr), если пытаться добавить узел в кластер, в котором он уже состоит
+
+    - name: Включение плагина управления
+      command: rabbitmq-plugins enable rabbitmq_management
+
+    - name: Скачать rabbitmqadmin
+      get_url:
+        url: http://localhost:15672/cli/rabbitmqadmin
+        dest: /usr/local/bin/rabbitmqadmin
+        mode: '0755'
+
+    - name: Создание конфига RabbitMQ для ha-all
+      ansible.builtin.copy:
+        dest: /etc/rabbitmq/rabbitmq.conf
+        content: "default_queue_type = quorum"
+        owner: rabbitmq
+        group: rabbitmq
+        mode: '0644'
+      notify: Restart RabbitMQ
+
+  handlers:
+    - name: Restart RabbitMQ
+      ansible.builtin.service:
+        name: rabbitmq-server
+        state: restarted

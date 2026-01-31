@@ -1,0 +1,53 @@
+$ sudo rabbitmqctl cluster_status
+Cluster status of node rabbit@worker2 ...
+Basics
+
+Cluster name: rabbit@worker2
+Total CPU cores available cluster-wide: 4
+
+Cluster Tags
+
+(none)
+
+Disk Nodes
+
+rabbit@bastion
+rabbit@worker1
+rabbit@worker2
+
+Running Nodes
+
+rabbit@bastion
+rabbit@worker2
+
+Versions
+
+rabbit@worker2: RabbitMQ 4.2.3 on Erlang 27.3.4.6
+rabbit@bastion: RabbitMQ 4.2.3 on Erlang 27.3.4.6
+
+CPU Cores
+
+Node: rabbit@worker2, available CPU cores: 2
+Node: rabbit@bastion, available CPU cores: 2
+
+Maintenance status
+
+Node: rabbit@worker2, status: not under maintenance
+Node: rabbit@bastion, status: not under maintenance
+
+Alarms
+
+(none)
+
+Network Partitions
+
+(none)
+
+Listeners
+
+Node: rabbit@worker2, interface: [::], port: 15672, protocol: http, purpose: HTTP API
+Node: rabbit@worker2, interface: [::], port: 25672, protocol: clustering, purpose: inter-node and CLI tool communication
+Node: rabbit@worker2, interface: [::], port: 5672, protocol: amqp, purpose: AMQP 0-9-1 and AMQP 1.0
+Node: rabbit@bastion, interface: [::], port: 15672, protocol: http, purpose: HTTP API
+Node: rabbit@bastion, interface: [::], port: 25672, protocol: clustering, purpose: inter-node and CLI tool communication
+Node: rabbit@bastion, interface: [::], port: 5672, protocol: amqp, purpose: AMQP 0-9-1 and AMQP 1.0
